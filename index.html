@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Console - Aydın UZ</title>
+    <style>
+        :root {
+            --color-gold: #f4c430;
+            --font-console: 'Courier New', Courier, monospace;
+            --font-clean: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: var(--color-gold);
+            font-family: var(--font-console);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* --- LAYERS --- */
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #river-canvas {
+            z-index: 20; /* On top for intro */
+            transition: opacity 2s ease-in-out;
+        }
+
+        #matrix-canvas {
+            z-index: 1; /* Background */
+            opacity: 0.25; /* Subtle */
+        }
+
+        #content-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 30;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none; /* Let clicks pass through if needed */
+            text-align: center;
+        }
+
+        /* --- INTRO TEXT --- */
+        #intro-overlay-text {
+            position: absolute;
+            z-index: 25;
+            color: white;
+            font-family: var(--font-clean);
+            font-size: 1.5rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+            opacity: 0;
+            transition: opacity 1s ease;
+        }
+
+        /* --- CONSOLE TYPOGRAPHY --- */
+        .console-line {
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 0 0 8px rgba(244, 196, 48, 0.6);
+            white-space: pre-wrap;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 12px;
+            height: 1.5rem;
+            background-color: var(--color-gold);
+            vertical-align: text-bottom;
+            margin-left: 4px;
+            animation: blink 1s step-end infinite;
+            box-shadow: 0 0 8px var(--color-gold);
+        }
+
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+        /* --- REVEAL ELEMENTS --- */
+        #reveal-container {
+            position: relative;
+            display: none; /* Hidden initially */
+            margin-bottom: 2rem;
+            justify-content: center;
+            align-items: center;
+            /* Layout Safety: Prevents collapse if canvas fails */
+            min-height: 300px; 
+            width: 100%;
+        }
+
+        #ascii-art {
+            font-size: 8px; /* High res desktop */
+            line-height: 0.6; /* Condensed lines for image look */
+            white-space: pre;
+            color: var(--color-gold);
+            text-shadow: 0 0 2px var(--color-gold);
+            opacity: 0.8;
+            transform-origin: center;
+        }
+
+        /* The Main Image - Default State (Success) */
+        #final-img-layer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            height: auto;
+            max-height: 100%;
+            width: auto;
+            max-width: 90%;
+            opacity: 0; /* Starts hidden */
+            transition: opacity 3s ease-in-out;
+            
+            /* Matrix Filter for Integration */
+            filter: sepia(1) hue-rotate(5deg) saturate(300%) contrast(1.1) brightness(0.9) drop-shadow(0 0 20px rgba(244, 196, 48, 0.4));
+            
+            z-index: 10;
+        }
+
+        /* FALLBACK STATE: Used if CORS blocks pixel reading */
+        .fallback-glow {
+            border-radius: 50%;
+            box-shadow: 0 0 60px rgba(244, 196, 48, 0.8), inset 0 0 20px rgba(244, 196, 48, 0.5);
+            border: 2px solid var(--color-gold);
+            width: 250px !important; /* Fixed size for orb */
+            height: 250px !important;
+            object-fit: cover;
+            /* Remove matrix filters for clear view in fallback */
+            filter: sepia(0.5) brightness(1.1) !important;
+        }
+
+        #final-message-container {
+            max-width: 700px;
+            padding: 0 20px;
+            display: none; /* Shown via JS */
+            z-index: 40;
+            background: rgba(0,0,0,0.6); /* Slight readability boost backdrop */
+            backdrop-filter: blur(2px);
+            border-radius: 10px;
+            padding: 10px;
+        }
+
+        #message-text {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+            text-shadow: 0 0 5px black;
+        }
+
+        #footer-title {
+            font-size: 2rem;
+            font-weight: 900;
+            letter-spacing: 2px;
+            text-shadow: 0 0 15px var(--color-gold);
+            opacity: 0;
+            transition: opacity 2s ease;
+        }
+
+        /* --- MOBILE --- */
+        @media (max-width: 600px) {
+            #ascii-art { font-size: 4px; line-height: 0.6; }
+            .console-line { font-size: 1.1rem; }
+            #message-text { font-size: 0.9rem; }
+            #footer-title { font-size: 1.4rem; }
+            .cursor { height: 1.1rem; width: 8px; }
+            #final-img-layer { max-width: 85vw; }
+            
+            /* Smaller fallback orb on mobile */
+            .fallback-glow {
+                width: 200px !important;
+                height: 200px !important;
+            }
+        }
+
+        .hidden { display: none !important; }
+        .visible { opacity: 1 !important; }
+        .fade-out { opacity: 0 !important; }
+
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/"
+  }
+}
+</script>
+</head>
+<body>
+
+    <!-- Canvas Layers -->
+    <canvas id="matrix-canvas"></canvas>
+    <canvas id="river-canvas"></canvas>
+
+    <!-- Content Container -->
+    <div id="content-layer">
+        <!-- Intro Text -->
+        <div id="intro-overlay-text">Su akıyor...</div>
+
+        <!-- Console Text Area -->
+        <div id="console-output">
+            <span id="active-text" class="console-line"></span><span class="cursor" id="main-cursor"></span>
+        </div>
+
+        <!-- Reveal Container: Holds ASCII and Final Photo -->
+        <div id="reveal-container">
+            <pre id="ascii-art"></pre>
+            <img id="final-img-layer" src="image_0.png" alt="Aydın UZ Teacher's Day Tribute">
+        </div>
+        
+        <div id="final-message-container">
+            <div id="message-text"></div>
+            <div id="footer-title">ÖĞRETMENLER GÜNÜNÜZ KUTLU OLSUN!</div>
+        </div>
+    </div>
+
+    <script>
+        /* --- CONFIGURATION --- */
+        const CONFIG = {
+            imagePath: 'image_0.png',
+            gold: '#f4c430',
+        };
+
+        const elements = {
+            riverCanvas: document.getElementById('river-canvas'),
+            matrixCanvas: document.getElementById('matrix-canvas'),
+            introText: document.getElementById('intro-overlay-text'),
+            activeText: document.getElementById('active-text'),
+            cursor: document.getElementById('main-cursor'),
+            revealContainer: document.getElementById('reveal-container'),
+            asciiPre: document.getElementById('ascii-art'),
+            finalImg: document.getElementById('final-img-layer'),
+            consoleOutput: document.getElementById('console-output'),
+            finalMsgContainer: document.getElementById('final-message-container'),
+            msgText: document.getElementById('message-text'),
+            footer: document.getElementById('footer-title')
+        };
+
+        /* --- MAIN SEQUENCE --- */
+        window.onload = async () => {
+            // 1. Start River Intro
+            const stopRiver = startRiverAnimation();
+            elements.introText.classList.add('visible');
+
+            // Wait for river to "flow"
+            await wait(3500);
+            elements.introText.innerText = "Su yolunu buldu.";
+            await wait(2000);
+
+            // 2. Transition to Matrix Void
+            elements.introText.classList.remove('visible');
+            elements.riverCanvas.classList.add('fade-out');
+            
+            // Start Matrix Rain in background
+            startMatrixAnimation();
+
+            await wait(2000); // Allow fade out to finish
+            stopRiver(); // Kill river loop to save resources
+            elements.riverCanvas.style.display = 'none';
+
+            // 3. Wake Up Sequence
+            await typeWriter("Wake up, Aydın Hoca...", 80);
+            await wait(2000);
+            await backspace(50);
+            await wait(500);
+            
+            await typeWriter("Veriler işleniyor...", 60);
+            await wait(1000);
+            await backspace(30);
+            await wait(500);
+
+            // Clear console line for reveal
+            elements.activeText.innerHTML = "";
+            elements.cursor.style.display = "none"; // Hide cursor temporarily
+
+            // 4. Reveal (With Try/Catch Fallback)
+            await showReveal();
+        };
+
+        /* --- UTILS --- */
+        function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+        async function typeWriter(text, speed) {
+            elements.activeText.innerHTML = "";
+            for (let i = 0; i < text.length; i++) {
+                elements.activeText.innerHTML += text.charAt(i);
+                await wait(speed + Math.random() * 20);
+            }
+        }
+
+        async function backspace(speed) {
+            let text = elements.activeText.innerHTML;
+            while (text.length > 0) {
+                text = text.substring(0, text.length - 1);
+                elements.activeText.innerHTML = text;
+                await wait(speed);
+            }
+        }
+
+        /* --- PHASE 1: RIVER CANVAS --- */
+        function startRiverAnimation() {
+            const canvas = elements.riverCanvas;
+            const ctx = canvas.getContext('2d');
+            let animationId;
+            let time = 0;
+
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            function draw() {
+                // Clear and fade
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // River Configuration
+                const layers = 6;
+                const maxRise = canvas.height * 0.95;
+                const riseProgress = Math.min(time * 0.7, maxRise); 
+                const baseHeight = canvas.height - riseProgress;
+
+                // Create a "surge" effect that varies flow speed over time
+                const surge = Math.sin(time * 0.005) * 0.3 + 1;
+
+                for (let i = 0; i < layers; i++) {
+                    ctx.beginPath();
+                    
+                    const depthFactor = i / layers; 
+                    const speed = (0.02 + depthFactor * 0.03) * surge; 
+                    const heightAmp = 20 + (i * 12); 
+                    const colorIntensity = 80 + (i * 35);
+                    
+                    ctx.moveTo(0, canvas.height);
+
+                    for (let x = 0; x <= canvas.width; x += 3) {
+                        const swell = Math.sin(x * 0.003 + time * speed) * heightAmp;
+                        const chop = Math.cos(x * 0.01 - time * speed * 1.5) * (heightAmp * 0.5);
+                        const ripple = Math.sin(x * 0.03 + time * speed * 4) * (heightAmp * 0.2);
+                        const y = baseHeight + (i * 10) + swell + chop + ripple;
+                        ctx.lineTo(x, y);
+                    }
+                    
+                    ctx.lineTo(canvas.width, canvas.height);
+                    ctx.lineTo(0, canvas.height);
+                    
+                    const gradient = ctx.createLinearGradient(0, baseHeight - 50, 0, canvas.height);
+                    const alpha = 0.4 + (i * 0.12);
+                    
+                    gradient.addColorStop(0, `rgba(${0 + i*5}, ${colorIntensity}, ${colorIntensity + 40}, ${alpha})`);
+                    gradient.addColorStop(1, `rgba(0, 10, 20, 1)`); 
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+
+                    if (i >= layers - 2) {
+                        ctx.lineWidth = 1;
+                        ctx.strokeStyle = `rgba(180, 255, 255, 0.2)`;
+                        ctx.stroke();
+                    }
+                }
+
+                time += 1.5;
+                animationId = requestAnimationFrame(draw);
+            }
+            draw();
+
+            return () => cancelAnimationFrame(animationId);
+        }
+
+        /* --- PHASE 2: MATRIX CANVAS --- */
+        function startMatrixAnimation() {
+            const canvas = elements.matrixCanvas;
+            const ctx = canvas.getContext('2d');
+            
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            const fontSize = 16;
+            let columns = Math.floor(canvas.width / fontSize);
+            let drops = Array(columns).fill(1);
+            
+            const colors = ['#f4c430', '#d4a017', '#ffe066'];
+
+            function draw() {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                if (Math.floor(canvas.width / fontSize) !== columns) {
+                    columns = Math.floor(canvas.width / fontSize);
+                    drops = Array(columns).fill(1);
+                }
+
+                for (let i = 0; i < drops.length; i++) {
+                    const x = i * fontSize;
+                    const y = drops[i] * fontSize;
+
+                    const radius = fontSize * 0.3;
+                    ctx.beginPath();
+                    ctx.arc(x + fontSize/2, y + fontSize/2, radius, 0, Math.PI*2);
+                    ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+                    ctx.fill();
+
+                    if (y > canvas.height && Math.random() > 0.975) {
+                        drops[i] = 0;
+                    }
+                    drops[i]++;
+                }
+                requestAnimationFrame(draw);
+            }
+            draw();
+        }
+
+        /* --- PHASE 3: REVEAL (ROBUST FALLBACK) --- */
+        async function showReveal() {
+            // Display Container
+            elements.revealContainer.style.display = 'flex';
+            
+            let asciiSuccess = false;
+
+            try {
+                // Attempt to generate ASCII
+                // If local file:// protocol is used, this may throw a Security Error (CORS)
+                const asciiLines = await generateAsciiLines(CONFIG.imagePath);
+                
+                // --- SUCCESS PATH: Flowing Code ---
+                asciiSuccess = true;
+                
+                // Fast scanline effect
+                for(let line of asciiLines) {
+                    elements.asciiPre.textContent += line + "\n";
+                    await wait(10); 
+                }
+                await wait(500);
+                
+                // Show rectangular image overlay
+                elements.finalImg.classList.add('visible');
+
+            } catch (e) {
+                // --- FAILURE PATH (CORS/Missing Image) ---
+                console.warn("ASCII Generation Failed (Likely CORS/Local File):", e);
+                
+                // Hide ASCII container to be safe
+                elements.asciiPre.style.display = 'none';
+
+                // Activate FALLBACK GLOW MODE on the image
+                elements.finalImg.classList.add('fallback-glow');
+                
+                // Force show the image immediately
+                elements.finalImg.classList.add('visible');
+            }
+
+            // --- COMMON PATH: Show Message ---
+            elements.finalMsgContainer.style.display = 'block';
+            
+            const finalMsg = "Bize sadece kod yazmayı değil, hayata farklı bir pencereden bakmayı öğrettiğiniz için teşekkür ederiz.";
+            
+            elements.msgText.innerHTML = '<span class="cursor"></span>';
+            const cursorSpan = elements.msgText.querySelector('.cursor');
+            
+            let i = 0;
+            function typeFinal() {
+                if (i < finalMsg.length) {
+                    cursorSpan.insertAdjacentText('beforebegin', finalMsg.charAt(i));
+                    i++;
+                    setTimeout(typeFinal, 40);
+                } else {
+                    setTimeout(() => {
+                        elements.footer.classList.add('visible');
+                    }, 1000);
+                }
+            }
+            typeFinal();
+        }
+
+        function generateAsciiLines(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                // 'Anonymous' helps if image is served from a CORS-enabled server,
+                // but local files will still fail here if the browser is strict.
+                img.crossOrigin = "Anonymous";
+                img.src = src;
+                
+                img.onload = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        
+                        const isMobile = window.innerWidth < 600;
+                        const width = isMobile ? 60 : 120;
+                        const ratio = img.height / img.width;
+                        const height = Math.floor(width * ratio * 0.55); 
+                        
+                        canvas.width = width;
+                        canvas.height = height;
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // THIS LINE IS THE DANGER ZONE FOR CORS:
+                        const pixels = ctx.getImageData(0, 0, width, height).data;
+                        
+                        const chars = " .'`^,:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+                        
+                        let lines = [];
+                        for (let y = 0; y < height; y++) {
+                            let line = "";
+                            for (let x = 0; x < width; x++) {
+                                const offset = (y * width + x) * 4;
+                                const avg = (pixels[offset] + pixels[offset+1] + pixels[offset+2]) / 3;
+                                const idx = Math.floor((avg / 255) * (chars.length - 1));
+                                line += chars[idx];
+                            }
+                            lines.push(line);
+                        }
+                        resolve(lines);
+                    } catch (err) {
+                        reject(err); // Catch canvas taint errors
+                    }
+                };
+                
+                img.onerror = (err) => reject(err);
+            });
+        }
+    </script>
+</body>
+</html>
